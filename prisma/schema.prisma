@@ -1,0 +1,678 @@
+// =====================================================
+// Islamic Habit-Building App - Prisma Schema
+// LUM Points & Level System for Daily Prayers, Tasks & Donations
+// =====================================================
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum TaskTag {
+  PHYSICAL
+  EMOTIONAL
+  MENTAL
+  SPIRITUAL
+}
+
+enum PrayerName {
+  FAJR
+  DHUHR
+  ASR
+  MAGHRIB
+  ISHA
+}
+
+enum DonationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+// =====================================================
+// VERIFICATION ENUMS
+// =====================================================
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VerificationType {
+  PHOTO         // User uploads photo - requires admin review
+  QR_CODE       // User scans QR code - instant auto-verification
+}
+
+enum CampaignTag {
+  FOOD
+  MEDICAL
+  EDUCATION
+  EMERGENCY
+  HOUSING
+  CLOTHING
+  WATER
+  ORPHANS
+  WIDOWS
+  OTHER
+}
+
+enum CampaignPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+// =====================================================
+// USER & AUTHENTICATION MODELS
+// =====================================================
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String?
+  phoneNumber       String?   @unique
+  phoneVerified     Boolean   @default(false)
+  googleId          String?   @unique
+  role              UserRole  @default(USER)
+  isActive          Boolean   @default(true)
+  isDeleted         Boolean   @default(false)
+  
+  // Profile relation
+  profile           UserProfile?
+  
+  // Authentication
+  passwordReset     PasswordReset?
+  phoneVerification PhoneVerification?
+  
+  // Activity tracking
+  dailyTaskCompletions DailyTaskCompletion[]
+  prayerCompletions    PrayerCompletion[]
+  taskCompletions      TaskCompletion[]
+  donations           Donation[]
+  
+  // QR Code for helping others
+  qrCode            String?   @unique // User's unique QR code for being helped
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model UserProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // LUM Points System
+  totalLum        Int      @default(0)      // Total LUM earned
+  currentLum      Int      @default(0)      // LUM available to use
+  
+  // Level System
+  levelId         Int      @default(1)
+  level           Level    @relation(fields: [levelId], references: [id])
+  
+  // Progress to next level
+  lumTowardsNext  Int      @default(0)      // LUM earned towards next level
+  
+  // Name and avatar
+  firstName       String?
+  lastName        String?
+  avatar          String?
+  
+  // Streak tracking
+  currentStreak   Int      @default(0)
+  longestStreak   Int      @default(0)
+  lastActiveDate  DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  isUsed    Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PhoneVerification {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String
+  expiresAt DateTime
+  isVerified Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+// =====================================================
+// LEVEL SYSTEM
+// =====================================================
+
+model Level {
+  id            Int            @id @default(autoincrement())
+  levelNumber   Int            @unique
+  
+  // Quota required to reach this level
+  // Example: Level 1 = 0-99 LUM, Level 2 = 100-299 LUM, etc.
+  lumQuota      Int            // Minimum LUM required to achieve this level
+  
+  // Display name for the level (optional)
+  name          String?        // e.g., "Beginner", "Seeker", "Devoted"
+  
+  // Users at this level
+  profiles      UserProfile[]
+  
+  // Next level relation
+  nextLevel     Level?         @relation("LevelToLevel", fields: [id], references: [id])
+  previousLevel Level?         @relation("LevelToLevel")
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([levelNumber])
+}
+
+// =====================================================
+// DAILY TASKS (System & User-Created)
+// =====================================================
+
+model DailyTask {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  
+  // Is this a prayer task?
+  isPrayer      Boolean   @default(false)
+  
+  // If it's a prayer, which prayer?
+  prayerName    PrayerName?
+  
+  // Is this a user-created daily task? (vs system-defined by admin)
+  // User-created tasks do NOT earn LUM - just for personal tracking
+  isUserCreated Boolean   @default(false)
+  
+  // If user-created, which user created it?
+  createdById   String?
+  
+  // LUM reward for completing this daily task
+  // NOTE: System-defined tasks earn LUM, user-created tasks have lumReward = 0
+  lumReward     Int       @default(10)
+  
+  // Order for display
+  order         Int       @default(0)
+  
+  // Is active?
+  isActive      Boolean   @default(true)
+  
+  // Completions
+  completions   DailyTaskCompletion[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([isPrayer])
+  @@index([order])
+}
+
+model DailyTaskCompletion {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyTaskId String
+  dailyTask   DailyTask @relation(fields: [dailyTaskId], references: [id], onDelete: Cascade)
+  
+  // When was it completed
+  completedAt DateTime  @default(now())
+  
+  // Which day (for tracking daily completions)
+  date        DateTime  // Date only (stored as midnight)
+  
+  createdAt   DateTime  @default(now())
+  
+  @@unique([userId, dailyTaskId, date]) // One completion per user per task per day
+  @@index([userId])
+  @@index([date])
+}
+
+// =====================================================
+// PRAYER TRACKING (5 Daily Prayers)
+// =====================================================
+
+model Prayer {
+  id          String   @id @default(uuid())
+  name        PrayerName @unique
+  order       Int      @default(0)        // Order: Fajr=1, Dhuhr=2, Asr=3, Maghrib=4, Isha=5
+  arabicName  String
+  englishName String
+  description String?
+  lumReward   Int      @default(10)       // LUM earned for completing each prayer
+  
+  completions PrayerCompletion[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PrayerCompletion {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prayerId  String
+  prayer    Prayer   @relation(fields: [prayerId], references: [id], onDelete: Cascade)
+  
+  // Completed at time
+  completedAt DateTime @default(now())
+  
+  // Date (for daily tracking)
+  date        DateTime
+  
+  // Is this prayer completed on time (within allowed time)?
+  isOnTime    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  
+  @@unique([userId, prayerId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+// =====================================================
+// TASKS (Admin Created - with Lock/Unlock System)
+// =====================================================
+
+model Task {
+  id              String    @id @default(uuid())
+  
+  // Task Content
+  title           String
+  corePhilosophy  String?   // Core philosophy of the task
+  purpose         String?   // Purpose of the task
+  yourTask        String?   // What the user's task is
+  requiredActions String?   // Required actions to complete
+  whyThisTest     String?   // Why this test
+  reminder        String?   // Reminder text
+  iAmReadyToBegin String?   // "I am ready to begin" text
+  
+  // Tag (one tag per task)
+  tag             TaskTag
+  
+  // LUM reward for completing this task
+  lumReward       Int       @default(50)
+  
+  // Order for sequential unlocking
+  order           Int       @default(0)
+  
+  // Is locked by default? User must complete previous task
+  isLocked        Boolean   @default(true)
+  
+  // Is active?
+  isActive        Boolean   @default(true)
+  
+  // =====================================================
+  // VERIFICATION RULES (Backend-defined)
+  // =====================================================
+  
+  // Does this task require verification?
+  // If false: Task can be completed without any proof (optional verification)
+  requiresVerification Boolean @default(true)
+  
+  // What verification types are allowed for this task?
+  // PHOTO = requires admin review
+  // QR_CODE = instant auto-verification
+  allowedVerificationTypes VerificationType[] @default([PHOTO, QR_CODE])
+  
+  // Maximum attempts for verification (photo submissions)
+  maxAttempts Int @default(3)
+  
+  // Verification deadline (hours after completion)
+  verificationDeadlineHours Int @default(24)
+  
+  // Previous task (for locking system)
+  previousTaskId  String?
+  previousTask    Task?     @relation("TaskToTask", fields: [previousTaskId], references: [id])
+  nextTask        Task?     @relation("TaskToTask")
+  
+  // Images
+  images          TaskImage[]
+  
+  // Completions
+  completions     TaskCompletion[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([tag])
+  @@index([order])
+  @@index([isLocked])
+  @@index([requiresVerification])
+}
+
+model TaskImage {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  // Image details
+  imageUrl    String
+  title       String?  // Image title
+  description String? // Image description
+  
+  // Order for multiple images
+  order       Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([taskId])
+}
+
+// =====================================================
+// TASK COMPLETION (With Proof & Verification)
+// =====================================================
+
+model TaskCompletion {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId      String
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  // =====================================================
+  // PROOF DETAILS (Captured at completion time)
+  // =====================================================
+  
+  // The verification type selected by user
+  proofType           VerificationType
+  
+  // Photo proof URL (if user uploaded photo)
+  proofPhotoUrl       String?
+  
+  // =====================================================
+  // QR CODE VERIFICATION (Instant verification)
+  // =====================================================
+  
+  // User scanned QR code from the person they helped
+  helperUserId        String?
+  helperUser          User?    @relation("HelperRelation", fields: [helperUserId], references: [id])
+  
+  // When was the QR code scanned
+  qrScannedAt         DateTime?
+  
+  // QR verification is instant - marked as verified
+  isQrVerified        Boolean  @default(false)
+  
+  // =====================================================
+  // VERIFICATION STATUS
+  // =====================================================
+  
+  // Current verification status
+  verificationStatus VerificationStatus @default(PENDING)
+  
+  // Number of verification attempts
+  attempts            Int       @default(0)
+  
+  // Deadline for verification submission
+  verificationDeadline DateTime?
+  
+  // =====================================================
+  // LUM AWARD (Awarded after verification)
+  // =====================================================
+  
+  lumAwarded  Int       @default(0)
+  lumPending  Boolean   @default(true)  // LUM held until verified
+  
+  // Completed at
+  completedAt DateTime  @default(now())
+  
+  // Verified/Approved at
+  verifiedAt DateTime?
+  
+  createdAt    DateTime  @default(now())
+  
+  // Admin verification relation
+  verifications TaskVerification[]
+  
+  @@unique([userId, taskId]) // One completion per user per task
+  @@index([userId])
+  @@index([taskId])
+  @@index([proofType])
+  @@index([verificationStatus])
+}
+
+// =====================================================
+// TASK VERIFICATION (Admin Approval Workflow)
+// =====================================================
+
+model TaskVerification {
+  id                String            @id @default(uuid())
+  completionId      String
+  completion        TaskCompletion    @relation(fields: [completionId], references: [id], onDelete: Cascade)
+  
+  // Admin who verified/rejected
+  adminId           String?
+  admin             Admin?            @relation(fields: [adminId], references: [id])
+  
+  // Verification details
+  status            VerificationStatus
+  
+  // Admin's comments
+  adminComment      String?
+  
+  // Rejection reason (if rejected)
+  rejectionReason   String?
+  
+  // Additional evidence/images from admin
+  adminImageUrl     String?
+  
+  // Verified at
+  verifiedAt        DateTime?
+  
+  createdAt         DateTime          @default(now())
+  
+  @@index([completionId])
+  @@index([adminId])
+  @@index([status])
+}
+
+// =====================================================
+// DONATIONS
+// =====================================================
+
+model Donation {
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Campaign relation
+  campaignId    String?
+  campaign      Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  
+  // Donation details
+  amount        Decimal        @db.Decimal(10, 2)  // Donation amount
+  currency      String         @default("USD")
+  
+  // Custom LUM reward (based on donation amount - configurable)
+  lumEarned     Int            @default(0)
+  
+  // Payment details (could integrate with payment gateway)
+  paymentId     String?        // Payment gateway reference
+  paymentMethod String?       // e.g., "stripe", "paypal", "bkash"
+  
+  // Status
+  status        DonationStatus @default(PENDING)
+  
+  // Message
+  message       String?
+  
+  // Completed at
+  completedAt   DateTime?
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([campaignId])
+}
+
+// =====================================================
+// CAMPAIGNS
+// =====================================================
+
+model Campaign {
+  id            String          @id @default(uuid())
+  
+  // Campaign details
+  name          String
+  description   String?
+  
+  // Target amount for the campaign
+  targetAmount  Decimal         @db.Decimal(12, 2)
+  
+  // Current amount raised (calculated from donations)
+  raisedAmount  Decimal         @db.Decimal(12, 2) @default(0)
+  
+  // Priority level
+  priority      CampaignPriority @default(MEDIUM)
+  
+  // Tag/category type
+  tag           CampaignTag
+  
+  // Fund raiser organization details
+  fundraiserName        String
+  fundraiserImage       String?
+  
+  // Campaign status
+  status        CampaignStatus  @default(DRAFT)
+  
+  // Cover image for the campaign
+  coverImage    String?
+  
+  // Start and end dates
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // Total number of donors
+  totalDonors   Int             @default(0)
+  
+  // Is active?
+  isActive      Boolean         @default(true)
+  
+  // Relations
+  donations     Donation[]
+  
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  @@index([status])
+  @@index([tag])
+  @@index([priority])
+}
+
+// =====================================================
+// ADMIN MANAGEMENT
+// =====================================================
+
+model Admin {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          String    @default("admin") // Could have "super_admin", "admin", "moderator"
+  isActive      Boolean   @default(true)
+  isDeleted     Boolean   @default(false)
+  
+  // Permissions
+  canCreateTask Boolean   @default(true)
+  canEditTask   Boolean   @default(true)
+  canDeleteTask Boolean   @default(false)
+  canViewStats  Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([email])
+}
+
+// =====================================================
+// USER LEVEL PROGRESSION HISTORY (Optional)
+// =====================================================
+
+model LevelProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  
+  // Previous level
+  fromLevelId Int
+  fromLevel   Level    @relation("FromLevel", fields: [fromLevelId], references: [id])
+  
+  // New level
+  toLevelId   Int
+  toLevel     Level    @relation("ToLevel", fields: [toLevelId], references: [id])
+  
+  // LUM at time of level up
+  lumAtLevelUp Int
+  
+  // When did they level up
+  leveledAt   DateTime @default(now())
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([leveledAt])
+}
+
+// =====================================================
+// SETTINGS / CONFIGURATION
+// =====================================================
+
+model AppSettings {
+  id                    String   @id @default(uuid())
+  
+  // Donation LUM multiplier (e.g., $1 = 10 LUM)
+  donationLumMultiplier Decimal  @db.Decimal(10, 4) @default(10)
+  
+  // Minimum donation amount to earn LUM
+  minDonationForLum     Decimal  @db.Decimal(10, 2) @default(1)
+  
+  // Prayer LUM reward
+  prayerLumReward       Int      @default(10)
+  
+  // Daily task LUM reward
+  dailyTaskLumReward    Int      @default(10)
+  
+  // Is registration open?
+  registrationOpen      Boolean  @default(true)
+  
+  // App version
+  minAppVersion         String?  
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
