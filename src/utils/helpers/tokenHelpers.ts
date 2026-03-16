@@ -12,19 +12,7 @@ export const generateUserTokens = async (userId: string) => {
       id: userId,
       isDeleted: false,
     },
-    include: {
-      adviser: {
-        select: {
-          id: true,
-          verification_status: true,
-        },
-      },
-      client: {
-        select: {
-          id: true,
-        },
-      },
-    },
+
   });
 
   if (!userData) {
@@ -33,11 +21,7 @@ export const generateUserTokens = async (userId: string) => {
 
   const payload = {
     id: userData.id,
-    name: userData?.name,
     email: userData?.email,
-    image: userData?.image,
-    cover_image: userData?.cover_image,
-    role: userData?.user_type,
   };
 
   const accessToken = jwtHelpers.generateToken(

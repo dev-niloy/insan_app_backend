@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 import globalErrorHandler from "./app/middlewares/globalErrorHandler";
 import { createServer } from "http";
 import { CORS_OPTIONS } from "./config/config";
-import { API_RESPONSES } from "./constants";
+import { API_RESPONSES } from "./constants/apiResponses";
 
 const app: Application = express();
 

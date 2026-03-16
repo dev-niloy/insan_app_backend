@@ -7,21 +7,10 @@ import { jwtHelpers } from "../../utils/helpers/jwtHelpers";
 import prisma from "../../shared/prisma";
 
 // src/types/auth.d.ts
-import { Adviser, Client } from "@prisma/client";
-
 export interface UserFromJwt {
   id: string;
   email: string;
   phone?: string;
-  role: "client" | "adviser" | "admin";
-  isEmailVerified: boolean;
-  isPhoneVerified: boolean;
-  verificationStatus: "APPROVED" | "PENDING" | "REJECTED" | "NOT_PROVIDED";
-  client?: Client | null;
-  adviser?: Adviser | null;
-  createdAt: Date;
-  updatedAt: Date;
-  permissions?: string[]; // added in authGuard
   token?: string;
 }
 
@@ -60,7 +49,6 @@ const authGuard = (...requiredPermissions: string[]) => {
         select: {
           id: true,
           email: true,
-          user_type: true,
         },
       });
 
@@ -68,46 +56,11 @@ const authGuard = (...requiredPermissions: string[]) => {
         throw new ApiError(httpStatus.UNAUTHORIZED, "User not found!");
       }
 
-      // Fetch permissions based on user_type → Role.title
-      const roleWithPermissions = await prisma.role.findFirst({
-        where: {
-          title: user.user_type,
-          isDeleted: false,
-        },
-        select: {
-          permissions: {
-            select: {
-              permission: {
-                select: {
-                  title: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      const userPermissions =
-        roleWithPermissions?.permissions?.map((p) => p.permission.title) || [];
 
       // Attach decoded user and permissions to request
       req.user = {
         ...decodedUser,
-        permissions: userPermissions,
       } as UserFromJwt;
-
-      // Check if user has all required permissions
-      const hasAllPermissions = requiredPermissions.every((perm) =>
-        userPermissions.includes(perm),
-      );
-
-      if (!hasAllPermissions) {
-        throw new ApiError(
-          httpStatus.FORBIDDEN,
-          "You do not have the required permissions!",
-        );
-      }
-
       next();
     } catch (err) {
       next(err);
