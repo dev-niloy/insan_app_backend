@@ -4,21 +4,11 @@ import ApiError from "../errors/ApiError";
 import httpStatus from "http-status";
 import jwt from "jsonwebtoken";
 
-import { Adviser, Client } from "@prisma/client";
 
 export interface UserFromJwt {
   id: string;
   email: string;
   phone?: string;
-  role: "client" | "adviser" | "admin";
-  isEmailVerified: boolean;
-  isPhoneVerified: boolean;
-  verificationStatus: "APPROVED" | "PENDING" | "REJECTED" | "NOT_PROVIDED";
-  client?: Client | null;
-  adviser?: Adviser | null;
-  createdAt: Date;
-  updatedAt: Date;
-  permissions?: string[]; // added in authGuard
   token?: string;
 }
 
