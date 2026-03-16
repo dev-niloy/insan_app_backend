@@ -54,8 +54,8 @@ enum VerificationStatus {
 }
 
 enum VerificationType {
-  PHOTO         // User uploads photo - requires admin review
-  QR_CODE       // User scans QR code - instant auto-verification
+  PHOTO // User uploads photo - requires admin review
+  QR_CODE // User scans QR code - instant auto-verification
 }
 
 enum CampaignTag {
@@ -86,69 +86,81 @@ enum CampaignStatus {
   CANCELLED
 }
 
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
 // =====================================================
 // USER & AUTHENTICATION MODELS
 // =====================================================
 
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  password          String?
-  phoneNumber       String?   @unique
-  phoneVerified     Boolean   @default(false)
-  googleId          String?   @unique
-  role              UserRole  @default(USER)
-  isActive          Boolean   @default(true)
-  isDeleted         Boolean   @default(false)
-  
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String?
+  phoneNumber   String?  @unique
+  phoneVerified Boolean  @default(false)
+  googleId      String?  @unique
+  role          UserRole @default(USER)
+  isActive      Boolean  @default(true)
+  isDeleted     Boolean  @default(false)
+
   // Profile relation
-  profile           UserProfile?
-  
+  profile UserProfile?
+
   // Authentication
   passwordReset     PasswordReset?
   phoneVerification PhoneVerification?
-  
+
   // Activity tracking
   dailyTaskCompletions DailyTaskCompletion[]
   prayerCompletions    PrayerCompletion[]
-  taskCompletions      TaskCompletion[]
-  donations           Donation[]
-  
+  taskCompletions      TaskCompletion[]      @relation("UserCompletions")
+  helpedCompletions    TaskCompletion[]      @relation("HelperRelation")
+  donations            Donation[]
+  levelProgressHistory LevelProgress[]
+
+  // Social Media relations
+  posts    Post[]
+  comments Comment[]
+  likes    Like[]
+
   // QR Code for helping others
-  qrCode            String?   @unique // User's unique QR code for being helped
-  
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  qrCode String? @unique // User's unique QR code for being helped
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model UserProfile {
-  id              String   @id @default(uuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // LUM Points System
-  totalLum        Int      @default(0)      // Total LUM earned
-  currentLum      Int      @default(0)      // LUM available to use
-  
+  totalLum   Int @default(0) // Total LUM earned
+  currentLum Int @default(0) // LUM available to use
+
   // Level System
-  levelId         Int      @default(1)
-  level           Level    @relation(fields: [levelId], references: [id])
-  
+  levelId Int   @default(1)
+  level   Level @relation(fields: [levelId], references: [id])
+
   // Progress to next level
-  lumTowardsNext  Int      @default(0)      // LUM earned towards next level
-  
+  lumTowardsNext Int @default(0) // LUM earned towards next level
+
   // Name and avatar
-  firstName       String?
-  lastName        String?
-  avatar          String?
-  
+  firstName String?
+  lastName  String?
+  avatar    String?
+
   // Streak tracking
-  currentStreak   Int      @default(0)
-  longestStreak   Int      @default(0)
-  lastActiveDate  DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  lastActiveDate DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PasswordReset {
@@ -157,18 +169,18 @@ model PasswordReset {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
   expiresAt DateTime
-  isUsed    Boolean @default(false)
+  isUsed    Boolean  @default(false)
   createdAt DateTime @default(now())
 }
 
 model PhoneVerification {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  code      String
-  expiresAt DateTime
-  isVerified Boolean @default(false)
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code       String
+  expiresAt  DateTime
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
 }
 
 // =====================================================
@@ -176,25 +188,30 @@ model PhoneVerification {
 // =====================================================
 
 model Level {
-  id            Int            @id @default(autoincrement())
-  levelNumber   Int            @unique
-  
+  id          Int @id @default(autoincrement())
+  levelNumber Int @unique
+
   // Quota required to reach this level
   // Example: Level 1 = 0-99 LUM, Level 2 = 100-299 LUM, etc.
-  lumQuota      Int            // Minimum LUM required to achieve this level
-  
+  lumQuota Int // Minimum LUM required to achieve this level
+
   // Display name for the level (optional)
-  name          String?        // e.g., "Beginner", "Seeker", "Devoted"
-  
+  name String? // e.g., "Beginner", "Seeker", "Devoted"
+
   // Users at this level
-  profiles      UserProfile[]
-  
-  // Next level relation
-  nextLevel     Level?         @relation("LevelToLevel", fields: [id], references: [id])
-  previousLevel Level?         @relation("LevelToLevel")
-  
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  profiles UserProfile[]
+
+  // Next level relation (chaining levels)
+  nextLevelId   Int?   @unique
+  nextLevel     Level? @relation("LevelToLevel", fields: [nextLevelId], references: [id])
+  previousLevel Level? @relation("LevelToLevel")
+
+  // Progress history
+  fromProgress LevelProgress[] @relation("FromLevel")
+  toProgress   LevelProgress[] @relation("ToLevel")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([levelNumber])
 }
@@ -204,39 +221,39 @@ model Level {
 // =====================================================
 
 model DailyTask {
-  id            String    @id @default(uuid())
-  name          String
-  description   String?
-  
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+
   // Is this a prayer task?
-  isPrayer      Boolean   @default(false)
-  
+  isPrayer Boolean @default(false)
+
   // If it's a prayer, which prayer?
-  prayerName    PrayerName?
-  
+  prayerName PrayerName?
+
   // Is this a user-created daily task? (vs system-defined by admin)
   // User-created tasks do NOT earn LUM - just for personal tracking
-  isUserCreated Boolean   @default(false)
-  
+  isUserCreated Boolean @default(false)
+
   // If user-created, which user created it?
-  createdById   String?
-  
+  createdById String?
+
   // LUM reward for completing this daily task
   // NOTE: System-defined tasks earn LUM, user-created tasks have lumReward = 0
-  lumReward     Int       @default(10)
-  
+  lumReward Int @default(10)
+
   // Order for display
-  order         Int       @default(0)
-  
+  order Int @default(0)
+
   // Is active?
-  isActive      Boolean   @default(true)
-  
+  isActive Boolean @default(true)
+
   // Completions
-  completions   DailyTaskCompletion[]
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
+  completions DailyTaskCompletion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([isPrayer])
   @@index([order])
 }
@@ -247,15 +264,15 @@ model DailyTaskCompletion {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   dailyTaskId String
   dailyTask   DailyTask @relation(fields: [dailyTaskId], references: [id], onDelete: Cascade)
-  
+
   // When was it completed
-  completedAt DateTime  @default(now())
-  
+  completedAt DateTime @default(now())
+
   // Which day (for tracking daily completions)
-  date        DateTime  // Date only (stored as midnight)
-  
-  createdAt   DateTime  @default(now())
-  
+  date DateTime // Date only (stored as midnight)
+
+  createdAt DateTime @default(now())
+
   @@unique([userId, dailyTaskId, date]) // One completion per user per task per day
   @@index([userId])
   @@index([date])
@@ -266,38 +283,38 @@ model DailyTaskCompletion {
 // =====================================================
 
 model Prayer {
-  id          String   @id @default(uuid())
+  id          String     @id @default(uuid())
   name        PrayerName @unique
-  order       Int      @default(0)        // Order: Fajr=1, Dhuhr=2, Asr=3, Maghrib=4, Isha=5
+  order       Int        @default(0) // Order: Fajr=1, Dhuhr=2, Asr=3, Maghrib=4, Isha=5
   arabicName  String
   englishName String
   description String?
-  lumReward   Int      @default(10)       // LUM earned for completing each prayer
-  
+  lumReward   Int        @default(10) // LUM earned for completing each prayer
+
   completions PrayerCompletion[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PrayerCompletion {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  prayerId  String
-  prayer    Prayer   @relation(fields: [prayerId], references: [id], onDelete: Cascade)
-  
+  id       String @id @default(uuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prayerId String
+  prayer   Prayer @relation(fields: [prayerId], references: [id], onDelete: Cascade)
+
   // Completed at time
   completedAt DateTime @default(now())
-  
+
   // Date (for daily tracking)
-  date        DateTime
-  
+  date DateTime
+
   // Is this prayer completed on time (within allowed time)?
-  isOnTime    Boolean  @default(true)
-  
-  createdAt   DateTime @default(now())
-  
+  isOnTime Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
   @@unique([userId, prayerId, date])
   @@index([userId])
   @@index([date])
@@ -308,66 +325,66 @@ model PrayerCompletion {
 // =====================================================
 
 model Task {
-  id              String    @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Task Content
   title           String
-  corePhilosophy  String?   // Core philosophy of the task
-  purpose         String?   // Purpose of the task
-  yourTask        String?   // What the user's task is
-  requiredActions String?   // Required actions to complete
-  whyThisTest     String?   // Why this test
-  reminder        String?   // Reminder text
-  iAmReadyToBegin String?   // "I am ready to begin" text
-  
+  corePhilosophy  String? // Core philosophy of the task
+  purpose         String? // Purpose of the task
+  yourTask        String? // What the user's task is
+  requiredActions String? // Required actions to complete
+  whyThisTest     String? // Why this test
+  reminder        String? // Reminder text
+  iAmReadyToBegin String? // "I am ready to begin" text
+
   // Tag (one tag per task)
-  tag             TaskTag
-  
+  tag TaskTag
+
   // LUM reward for completing this task
-  lumReward       Int       @default(50)
-  
+  lumReward Int @default(50)
+
   // Order for sequential unlocking
-  order           Int       @default(0)
-  
+  order Int @default(0)
+
   // Is locked by default? User must complete previous task
-  isLocked        Boolean   @default(true)
-  
+  isLocked Boolean @default(true)
+
   // Is active?
-  isActive        Boolean   @default(true)
-  
+  isActive Boolean @default(true)
+
   // =====================================================
   // VERIFICATION RULES (Backend-defined)
   // =====================================================
-  
+
   // Does this task require verification?
   // If false: Task can be completed without any proof (optional verification)
   requiresVerification Boolean @default(true)
-  
+
   // What verification types are allowed for this task?
   // PHOTO = requires admin review
   // QR_CODE = instant auto-verification
   allowedVerificationTypes VerificationType[] @default([PHOTO, QR_CODE])
-  
+
   // Maximum attempts for verification (photo submissions)
   maxAttempts Int @default(3)
-  
+
   // Verification deadline (hours after completion)
   verificationDeadlineHours Int @default(24)
-  
+
   // Previous task (for locking system)
-  previousTaskId  String?
-  previousTask    Task?     @relation("TaskToTask", fields: [previousTaskId], references: [id])
-  nextTask        Task?     @relation("TaskToTask")
-  
+  previousTaskId String? @unique
+  previousTask   Task?   @relation("TaskToTask", fields: [previousTaskId], references: [id])
+  nextTask       Task?   @relation("TaskToTask")
+
   // Images
-  images          TaskImage[]
-  
+  images TaskImage[]
+
   // Completions
-  completions     TaskCompletion[]
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
+  completions TaskCompletion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([tag])
   @@index([order])
   @@index([isLocked])
@@ -375,20 +392,20 @@ model Task {
 }
 
 model TaskImage {
-  id          String   @id @default(uuid())
-  taskId      String
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(uuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
   // Image details
   imageUrl    String
-  title       String?  // Image title
+  title       String? // Image title
   description String? // Image description
-  
+
   // Order for multiple images
-  order       Int      @default(0)
-  
-  createdAt   DateTime @default(now())
-  
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+
   @@index([taskId])
 }
 
@@ -397,67 +414,67 @@ model TaskImage {
 // =====================================================
 
 model TaskCompletion {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taskId      String
-  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation("UserCompletions", fields: [userId], references: [id], onDelete: Cascade)
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
   // =====================================================
   // PROOF DETAILS (Captured at completion time)
   // =====================================================
-  
+
   // The verification type selected by user
-  proofType           VerificationType
-  
+  proofType VerificationType
+
   // Photo proof URL (if user uploaded photo)
-  proofPhotoUrl       String?
-  
+  proofPhotoUrl String?
+
   // =====================================================
   // QR CODE VERIFICATION (Instant verification)
   // =====================================================
-  
+
   // User scanned QR code from the person they helped
-  helperUserId        String?
-  helperUser          User?    @relation("HelperRelation", fields: [helperUserId], references: [id])
-  
+  helperUserId String?
+  helperUser   User?   @relation("HelperRelation", fields: [helperUserId], references: [id])
+
   // When was the QR code scanned
-  qrScannedAt         DateTime?
-  
+  qrScannedAt DateTime?
+
   // QR verification is instant - marked as verified
-  isQrVerified        Boolean  @default(false)
-  
+  isQrVerified Boolean @default(false)
+
   // =====================================================
   // VERIFICATION STATUS
   // =====================================================
-  
+
   // Current verification status
   verificationStatus VerificationStatus @default(PENDING)
-  
+
   // Number of verification attempts
-  attempts            Int       @default(0)
-  
+  attempts Int @default(0)
+
   // Deadline for verification submission
   verificationDeadline DateTime?
-  
+
   // =====================================================
   // LUM AWARD (Awarded after verification)
   // =====================================================
-  
-  lumAwarded  Int       @default(0)
-  lumPending  Boolean   @default(true)  // LUM held until verified
-  
+
+  lumAwarded Int     @default(0)
+  lumPending Boolean @default(true) // LUM held until verified
+
   // Completed at
-  completedAt DateTime  @default(now())
-  
+  completedAt DateTime @default(now())
+
   // Verified/Approved at
   verifiedAt DateTime?
-  
-  createdAt    DateTime  @default(now())
-  
+
+  createdAt DateTime @default(now())
+
   // Admin verification relation
   verifications TaskVerification[]
-  
+
   @@unique([userId, taskId]) // One completion per user per task
   @@index([userId])
   @@index([taskId])
@@ -470,31 +487,31 @@ model TaskCompletion {
 // =====================================================
 
 model TaskVerification {
-  id                String            @id @default(uuid())
-  completionId      String
-  completion        TaskCompletion    @relation(fields: [completionId], references: [id], onDelete: Cascade)
-  
+  id           String         @id @default(uuid())
+  completionId String
+  completion   TaskCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+
   // Admin who verified/rejected
-  adminId           String?
-  admin             Admin?            @relation(fields: [adminId], references: [id])
-  
+  adminId String?
+  admin   Admin?  @relation(fields: [adminId], references: [id])
+
   // Verification details
-  status            VerificationStatus
-  
+  status VerificationStatus
+
   // Admin's comments
-  adminComment      String?
-  
+  adminComment String?
+
   // Rejection reason (if rejected)
-  rejectionReason   String?
-  
+  rejectionReason String?
+
   // Additional evidence/images from admin
-  adminImageUrl     String?
-  
+  adminImageUrl String?
+
   // Verified at
-  verifiedAt        DateTime?
-  
-  createdAt         DateTime          @default(now())
-  
+  verifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+
   @@index([completionId])
   @@index([adminId])
   @@index([status])
@@ -505,37 +522,37 @@ model TaskVerification {
 // =====================================================
 
 model Donation {
-  id            String         @id @default(uuid())
-  userId        String
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Campaign relation
-  campaignId    String?
-  campaign      Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
   // Donation details
-  amount        Decimal        @db.Decimal(10, 2)  // Donation amount
-  currency      String         @default("USD")
-  
+  amount   Decimal @db.Decimal(10, 2) // Donation amount
+  currency String  @default("USD")
+
   // Custom LUM reward (based on donation amount - configurable)
-  lumEarned     Int            @default(0)
-  
+  lumEarned Int @default(0)
+
   // Payment details (could integrate with payment gateway)
-  paymentId     String?        // Payment gateway reference
-  paymentMethod String?       // e.g., "stripe", "paypal", "bkash"
-  
+  paymentId     String? // Payment gateway reference
+  paymentMethod String? // e.g., "stripe", "paypal", "bkash"
+
   // Status
-  status        DonationStatus @default(PENDING)
-  
+  status DonationStatus @default(PENDING)
+
   // Message
-  message       String?
-  
+  message String?
+
   // Completed at
-  completedAt   DateTime?
-  
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([status])
   @@index([campaignId])
@@ -546,50 +563,50 @@ model Donation {
 // =====================================================
 
 model Campaign {
-  id            String          @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Campaign details
-  name          String
-  description   String?
-  
+  name        String
+  description String?
+
   // Target amount for the campaign
-  targetAmount  Decimal         @db.Decimal(12, 2)
-  
+  targetAmount Decimal @db.Decimal(12, 2)
+
   // Current amount raised (calculated from donations)
-  raisedAmount  Decimal         @db.Decimal(12, 2) @default(0)
-  
+  raisedAmount Decimal @default(0) @db.Decimal(12, 2)
+
   // Priority level
-  priority      CampaignPriority @default(MEDIUM)
-  
+  priority CampaignPriority @default(MEDIUM)
+
   // Tag/category type
-  tag           CampaignTag
-  
+  tag CampaignTag
+
   // Fund raiser organization details
-  fundraiserName        String
-  fundraiserImage       String?
-  
+  fundraiserName  String
+  fundraiserImage String?
+
   // Campaign status
-  status        CampaignStatus  @default(DRAFT)
-  
+  status CampaignStatus @default(DRAFT)
+
   // Cover image for the campaign
-  coverImage    String?
-  
+  coverImage String?
+
   // Start and end dates
-  startDate     DateTime?
-  endDate       DateTime?
-  
+  startDate DateTime?
+  endDate   DateTime?
+
   // Total number of donors
-  totalDonors   Int             @default(0)
-  
+  totalDonors Int @default(0)
+
   // Is active?
-  isActive      Boolean         @default(true)
-  
+  isActive Boolean @default(true)
+
   // Relations
-  donations     Donation[]
-  
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  
+  donations Donation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([status])
   @@index([tag])
   @@index([priority])
@@ -600,23 +617,26 @@ model Campaign {
 // =====================================================
 
 model Admin {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  password      String
-  name          String
-  role          String    @default("admin") // Could have "super_admin", "admin", "moderator"
-  isActive      Boolean   @default(true)
-  isDeleted     Boolean   @default(false)
-  
+  id        String  @id @default(uuid())
+  email     String  @unique
+  password  String
+  name      String
+  role      String  @default("admin") // Could have "super_admin", "admin", "moderator"
+  isActive  Boolean @default(true)
+  isDeleted Boolean @default(false)
+
   // Permissions
-  canCreateTask Boolean   @default(true)
-  canEditTask   Boolean   @default(true)
-  canDeleteTask Boolean   @default(false)
-  canViewStats  Boolean   @default(true)
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
+  canCreateTask Boolean @default(true)
+  canEditTask   Boolean @default(true)
+  canDeleteTask Boolean @default(false)
+  canViewStats  Boolean @default(true)
+
+  // Relations
+  verifications TaskVerification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([email])
 }
 
@@ -625,25 +645,26 @@ model Admin {
 // =====================================================
 
 model LevelProgress {
-  id          String   @id @default(uuid())
-  userId      String
-  
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Previous level
   fromLevelId Int
-  fromLevel   Level    @relation("FromLevel", fields: [fromLevelId], references: [id])
-  
+  fromLevel   Level @relation("FromLevel", fields: [fromLevelId], references: [id])
+
   // New level
-  toLevelId   Int
-  toLevel     Level    @relation("ToLevel", fields: [toLevelId], references: [id])
-  
+  toLevelId Int
+  toLevel   Level @relation("ToLevel", fields: [toLevelId], references: [id])
+
   // LUM at time of level up
   lumAtLevelUp Int
-  
+
   // When did they level up
-  leveledAt   DateTime @default(now())
-  
-  createdAt   DateTime @default(now())
-  
+  leveledAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([leveledAt])
 }
@@ -653,26 +674,98 @@ model LevelProgress {
 // =====================================================
 
 model AppSettings {
-  id                    String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Donation LUM multiplier (e.g., $1 = 10 LUM)
-  donationLumMultiplier Decimal  @db.Decimal(10, 4) @default(10)
-  
+  donationLumMultiplier Decimal @default(10) @db.Decimal(10, 4)
+
   // Minimum donation amount to earn LUM
-  minDonationForLum     Decimal  @db.Decimal(10, 2) @default(1)
-  
+  minDonationForLum Decimal @default(1) @db.Decimal(10, 2)
+
   // Prayer LUM reward
-  prayerLumReward       Int      @default(10)
-  
+  prayerLumReward Int @default(10)
+
   // Daily task LUM reward
-  dailyTaskLumReward    Int      @default(10)
-  
+  dailyTaskLumReward Int @default(10)
+
   // Is registration open?
-  registrationOpen      Boolean  @default(true)
-  
+  registrationOpen Boolean @default(true)
+
   // App version
-  minAppVersion         String?  
-  
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  minAppVersion String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =====================================================
+// SOCIAL MEDIA SYSTEM
+// =====================================================
+
+model Post {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  content String? @db.Text
+
+  // Media attachments (multiple images/videos)
+  media PostMedia[]
+
+  // Interactions
+  comments Comment[]
+  likes    Like[]
+
+  // Stats for quick access
+  likeCount    Int @default(0)
+  commentCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model PostMedia {
+  id     String @id @default(uuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  url   String
+  type  MediaType @default(IMAGE)
+  order Int       @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+}
+
+model Comment {
+  id     String @id @default(uuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  content String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId])
+  @@index([userId])
+}
+
+model Like {
+  id     String @id @default(uuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+  @@index([postId])
+  @@index([userId])
 }

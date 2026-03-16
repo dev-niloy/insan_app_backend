@@ -69,13 +69,16 @@
 
 ### 2.4 Level System
 
-| Level | LUM Required | Default Name |
-| ----- | ------------ | ------------ |
-| 1     | 0-99         | Beginner     |
-| 2     | 100-299      | Seeker       |
-| 3     | 300-599      | Learner      |
-| 4     | 600-999      | Devoted      |
 | 5     | 1000+        | Guided       |
+
+### 2.6 Social Media
+
+| Feature | Description |
+|---------|-------------|
+| **Post Creation** | Users can share thoughts and progress |
+| **Media Support** | Upload multiple images or videos per post |
+| **Comments** | Engage with other users' posts |
+| **Likes** | Show appreciation for posts |
 
 > **Note:** Admin can change level names and quotas via Admin Panel.
 
@@ -412,9 +415,22 @@ Task Completion
 | POST   | /tasks/:id/start    | Start task          |
 | POST   | /tasks/:id/complete | Complete with proof |
 
+### 6.5 Social Media Endpoints
+
+| Method | Endpoint               | Description              |
+| ------ | ---------------------- | ------------------------ |
+| GET    | /posts                 | List all posts (feed)    |
+| POST   | /posts                 | Create new post          |
+| GET    | /posts/:id             | Get post details         |
+| DELETE | /posts/:id             | Delete my post           |
+| POST   | /posts/:id/like        | Like/Unlike a post       |
+| GET    | /posts/:id/comments    | List comments on a post  |
+| POST   | /posts/:id/comments    | Add comment to a post    |
+| DELETE | /comments/:id          | Delete my comment        |
+
 ---
 
-### 6.5 Admin API (Web Panel)
+### 6.6 Admin API (Web Panel)
 
 #### Dashboard
 
@@ -491,6 +507,15 @@ Task Completion
 | GET    | /admin/settings | Get app settings    |
 | PUT    | /admin/settings | Update app settings |
 
+#### Social Media Management
+
+| Method | Endpoint              | Description             |
+| ------ | --------------------- | ----------------------- |
+| GET    | /admin/posts          | List all posts          |
+| DELETE | /admin/posts/:id      | Delete any post         |
+| GET    | /admin/posts/:id/comments | List post comments  |
+| DELETE | /admin/comments/:id   | Delete any comment      |
+
 #### Admin Users
 
 | Method | Endpoint          | Description  |
@@ -518,6 +543,10 @@ Task Completion
 | TaskCompletion   | Completions with proof |
 | TaskVerification | Admin review records   |
 | Donation         | Donations              |
+| Post             | Social media posts     |
+| PostMedia        | Media attached to posts|
+| Comment          | Post comments          |
+| Like             | Post likes             |
 
 ### Key Enums
 
@@ -528,6 +557,7 @@ enum VerificationType { PHOTO, QR_CODE }
 enum VerificationStatus { PENDING, APPROVED, REJECTED }
 enum PrayerName { FAJR, DHUHR, ASR, MAGHRIB, ISHA }
 enum DonationStatus { PENDING, COMPLETED, FAILED }
+enum MediaType { IMAGE, VIDEO }
 ```
 
 ### 7.4 Entity Relationships
@@ -541,7 +571,15 @@ User (1) ────────── (1) UserProfile
   ├─ (N) PrayerCompletion
   ├─ (N) TaskCompletion
   ├─ (N) Donation
+  ├─ (N) Post
+  ├─ (N) Comment
+  ├─ (N) Like
   └─ (N) TaskCompletion (as helper)
+
+Post (1) ────────── (N) PostMedia
+  │
+  ├─ (N) Comment
+  └─ (N) Like
 
 Task (1) ────────── (N) TaskImage
   │
